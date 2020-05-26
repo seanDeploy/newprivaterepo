@@ -1,0 +1,3 @@
+[filesystem "jenkins-test-instance.us-east1-b.c.terraform-test-project-274821.internal|Private Build|1.8.0_252|/dev/sda1"]
+	timestampResolution = 1001 microseconds
+	minRacyThreshold = 5351 microseconds

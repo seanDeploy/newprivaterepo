@@ -1,0 +1,305 @@
+<?xml version='1.1' encoding='UTF-8'?>
+<flow-build plugin="workflow-job@2.39">
+  <actions>
+    <hudson.model.CauseAction>
+      <causeBag class="linked-hash-map">
+        <entry>
+          <hudson.model.Cause_-UserIdCause>
+            <userId>admin</userId>
+          </hudson.model.Cause_-UserIdCause>
+          <int>1</int>
+        </entry>
+      </causeBag>
+    </hudson.model.CauseAction>
+    <org.jenkinsci.plugins.workflow.libs.LibrariesAction plugin="workflow-cps-global-lib@2.16">
+      <libraries/>
+    </org.jenkinsci.plugins.workflow.libs.LibrariesAction>
+    <org.jenkinsci.plugins.workflow.cps.EnvActionImpl plugin="workflow-cps@2.80">
+      <env class="tree-map"/>
+    </org.jenkinsci.plugins.workflow.cps.EnvActionImpl>
+    <hudson.plugins.git.util.BuildData plugin="git@4.2.2">
+      <buildsByBranchName>
+        <entry>
+          <string>refs/remotes/origin/master</string>
+          <hudson.plugins.git.util.Build>
+            <marked plugin="git-client@3.2.1">
+              <sha1>c8580a6dc18e1a6c501e5f920e9a54568ab46ed2</sha1>
+              <branches class="list">
+                <hudson.plugins.git.Branch>
+                  <sha1 reference="../../../sha1"/>
+                  <name>refs/remotes/origin/master</name>
+                </hudson.plugins.git.Branch>
+              </branches>
+            </marked>
+            <revision reference="../marked"/>
+            <hudsonBuildNumber>6</hudsonBuildNumber>
+          </hudson.plugins.git.util.Build>
+        </entry>
+      </buildsByBranchName>
+      <lastBuild reference="../buildsByBranchName/entry/hudson.plugins.git.util.Build"/>
+      <remoteUrls>
+        <string>https://github.com/JonathanDonJoe/etherpad-lite/</string>
+      </remoteUrls>
+    </hudson.plugins.git.util.BuildData>
+    <hudson.plugins.git.GitTagAction plugin="git@4.2.2">
+      <tags class="hudson.util.CopyOnWriteMap$Tree">
+        <entry>
+          <string>refs/remotes/origin/master</string>
+          <list/>
+        </entry>
+      </tags>
+      <ws>/var/lib/jenkins/jobs/demo-pipeline/workspace</ws>
+    </hudson.plugins.git.GitTagAction>
+    <org.jenkinsci.plugins.workflow.steps.scm.MultiSCMRevisionState plugin="workflow-scm-step@2.11">
+      <revisionStates>
+        <entry>
+          <string>git https://github.com/JonathanDonJoe/etherpad-lite/</string>
+          <hudson.scm.SCMRevisionState_-None/>
+        </entry>
+      </revisionStates>
+    </org.jenkinsci.plugins.workflow.steps.scm.MultiSCMRevisionState>
+  </actions>
+  <queueId>11</queueId>
+  <timestamp>1590515880476</timestamp>
+  <startTime>1590515880480</startTime>
+  <result>SUCCESS</result>
+  <duration>6023</duration>
+  <charset>UTF-8</charset>
+  <keepLog>false</keepLog>
+  <execution class="org.jenkinsci.plugins.workflow.cps.CpsFlowExecution">
+    <result>SUCCESS</result>
+    <script>node {
+    def app
+    def gitBranch
+    def commitHash
+    def repoUrl
+    def authorEmail
+    def authorName
+    def commitEmail
+    def commitName
+    def commitDate
+    def commitSubject
+    def artifactTag
+    def buildUUId
+    def image
+
+
+    stage(&apos;Post Initiate build to auditor&apos;) {
+        // Create build UUID and startTime
+        buildUUId = UUID.randomUUID().toString();
+        def startTime = new Date()
+        //create details to be added
+        detail = &quot;INITIATED: BUILD jenkins-${env.JOB_NAME}-v${env.BUILD_ID}-${BUILD_TIMESTAMP_NO_SPACES} by Jenkins Pipline&quot;
+        //grab the user
+         wrap([$class: &apos;BuildUser&apos;]) {
+            def user = env.BUILD_USER_ID
+        }
+        //post to postgres
+        sh(returnStdout:false, script: &quot;export PGPASSWORD=\&quot;water15wet\&quot;; psql -h 68.183.145.238 -U auditor -d auditor -c \&quot;INSERT INTO auditor (action, action_id, user_name, detail, action_time) VALUES (&apos;Build&apos;, &apos;${buildUUId}&apos;, &apos;${user}&apos;, &apos;${detail}&apos;, &apos;${startTime}&apos;)\&quot;&quot;)
+    }
+    try { stage(&apos;Clone Repository&apos;) {
+
+        def branch
+        script {
+            if (env.BRANCH == null) {
+                branch = &apos;master&apos;
+            } else {
+                branch = env.BRANCH
+            }
+        }
+        def d = git branch: &quot;${branch}&quot;, credentialsId: &quot;${env.CRED_ID}&quot;, url: &quot;${env.REPO_NAME}&quot;
+        gitBranch = d.GIT_BRANCH
+        commitHash = d.GIT_COMMIT
+        repoUrl = d.GIT_URL
+        authorEmail = sh(returnStdout: true, script: &quot;git log -1 --format=&apos;%ae&apos; ${commitHash}&quot;).trim()
+        authorName = sh(returnStdout: true, script: &quot;git log -1 --format=&apos;%an&apos; ${commitHash}&quot;).trim()
+        commitEmail = sh(returnStdout: true, script: &quot;git log -1 --format=&apos;%ce&apos; ${commitHash}&quot;).trim()
+        commitName = sh(returnStdout: true, script: &quot;git log -1 --format=&apos;%cn&apos; ${commitHash}&quot;).trim()
+        commitDate = sh(returnStdout: true, script: &quot;git log -1 --format=&apos;%cD&apos; ${commitHash}&quot;).trim()
+        commitSubject = sh(returnStdout: true, script: &quot;git log -1 --format=&apos;%s&apos; ${commitHash}&quot;).trim()
+
+    }
+    stage(&apos;Build image&apos;) {
+        app = docker.build(&quot;${env.JOB_NAME}&quot;)   
+    }
+    stage(&apos;Push Image&apos;) {
+    
+        echo &apos;Trying to Push Docker Build to Nexus&apos;
+        artifactTag = &quot;jenkins-${env.JOB_NAME}-v${env.BUILD_ID}-${BUILD_TIMESTAMP_NO_SPACES}&quot;
+        image = &quot;45.55.63.138:18079/${env.JOB_NAME}:${artifactTag}&quot;
+        docker.withRegistry(&apos;https://45.55.63.138:18079&apos;, &apos;nexus&apos;) {
+            app.push(&quot;${artifactTag}&quot;)
+            app.push(&quot;latest&quot;)
+        }
+    }
+    
+    stage(&apos;echo metadata&apos;) {
+        echo &quot;artifactName: ${env.JOB_NAME}&quot;
+        echo &quot;artifactTag: ${artifactTag}&quot;
+        echo &quot;artifactVersion: ${env.BUILD_ID}&quot;
+        echo &quot;buildTimestamp: ${env.BUILD_TIMESTAMP}&quot;
+        echo &quot;timestamp: ${env.BUILD_TIMESTAMP_NO_SPACES}&quot;
+        echo &quot;buildURL: ${env.BUILD_URL}&quot;
+        echo &quot;jenkinsUrl: ${env.JENKINS_URL}&quot;
+        echo &quot;jenkinsJobName: ${env.JOB_NAME}&quot;
+        echo &quot;jenkinsJobTag: ${env.BUILD_TAG}&quot;
+        echo &quot;gitBranch: ${gitBranch}&quot;
+        echo &quot;commitHash: ${commitHash}&quot;
+        echo &quot;repoUrl: ${repoUrl}&quot;
+        echo &quot;authorEmail: ${authorEmail}&quot;
+        echo &quot;authorName: ${authorName}&quot;
+        echo &quot;commitEmail: ${commitEmail}&quot;
+        echo &quot;commitName: ${commitName}&quot;
+        echo &quot;commitDate: ${commitDate}&quot;
+        echo &quot;commitSubject: ${commitSubject}&quot;
+        echo &quot;image: ${image}&quot;
+        echo &quot;port ${env.PORT}&quot; 
+    }
+    stage(&apos;Export Metadata&apos;) {
+        def metadataJSON = 
+        &quot;&quot;&quot;{
+            &quot;data&quot;: {
+                &quot;actionType&quot;: &quot;build&quot;,
+                &quot;appType&quot;: &quot;document editor&quot;,
+                &quot;didBuild&quot;: &quot;true&quot;,
+                &quot;buildMessage&quot;: &quot;Build successful&quot;,
+                &quot;artifactType&quot;: &quot;docker&quot;,
+                &quot;artifactName&quot;: &quot;${env.JOB_NAME}&quot;,
+                &quot;artifactTag&quot;: &quot;${artifactTag}&quot;,
+                &quot;artifactVersion&quot;: &quot;${env.BUILD_ID}&quot;,
+                &quot;buildTimestamp&quot;: &quot;${env.BUILD_TIMESTAMP}&quot;,
+                &quot;timestamp&quot;: &quot;${env.BUILD_TIMESTAMP_NO_SPACES}&quot;,
+                &quot;buildURL&quot;: &quot;${env.BUILD_URL}&quot;,
+                &quot;jenkinsUrl&quot;: &quot;${env.JENKINS_URL}&quot;,
+                &quot;jenkinsJobName&quot;: &quot;${env.JOB_NAME}&quot;,
+                &quot;jenkinsJobTag&quot;: &quot;${env.BUILD_TAG}&quot;,
+                &quot;gitBranch&quot;: &quot;${gitBranch}&quot;,
+                &quot;commitHash&quot;: &quot;${commitHash}&quot;,
+                &quot;repoUrl&quot;: &quot;${repoUrl}&quot;,
+                &quot;authorEmail&quot;: &quot;${authorEmail}&quot;,
+                &quot;authorName&quot;: &quot;${authorName}&quot;,
+                &quot;commitEmail&quot;: &quot;${commitEmail}&quot;,
+                &quot;commitName&quot;: &quot;${commitName}&quot;,
+                &quot;commitDate&quot;: &quot;${commitDate}&quot;,
+                &quot;commitSubject&quot;: &quot;${commitSubject}&quot;,
+                &quot;image&quot;: &quot;${image}&quot;,
+                &quot;port&quot;: &quot;${env.PORT}&quot;
+            }
+        }&quot;&quot;&quot;
+        def response = httpRequest acceptType: &apos;APPLICATION_JSON&apos;, contentType: &apos;APPLICATION_JSON&apos;, httpMode: &apos;POST&apos;, requestBody: metadataJSON, url: &quot;http://206.189.176.58:3000/develop/store&quot;
+}
+
+stage(&apos;Post Completed build to auditor&apos;) {
+
+    def successTime = new Date()
+
+    successDetail = &quot;SUCCESS: BUILD jenkins-${env.JOB_NAME}-v${env.BUILD_ID}-${BUILD_TIMESTAMP_NO_SPACES} by Jenkins Pipline&quot;
+
+    sh(returnStdout:false, script: &quot;export PGPASSWORD=\&quot;water15wet\&quot;; psql -h 68.183.145.238 -U auditor -d auditor -c \&quot;INSERT INTO auditor (action, action_id, user_name, detail, action_time) VALUES (&apos;Build&apos;, &apos;${buildUUId}&apos;, &apos;${user}&apos;, &apos;${successDetail}&apos;, &apos;${successTime}&apos;)\&quot;&quot;)
+
+    }
+        
+    }   catch(err) {
+            def failedTime = new Date()
+
+            failedDetail = &quot;FAILED: BUILD jenkins-${env.JOB_NAME}-v${env.BUILD_ID}-${BUILD_TIMESTAMP_NO_SPACES} by Jenkins Pipline&quot;
+            
+            sh(returnStdout:false, script: &quot;export PGPASSWORD=\&quot;water15wet\&quot;; psql -h 68.183.145.238 -U auditor -d auditor -d auditor -c \&quot;INSERT INTO auditor (action, action_id, user_name, detail, action_time) VALUES (&apos;Build&apos;, &apos;${buildUUId}&apos;, &apos;${user}&apos;, &apos;${failedDetail}&apos;, &apos;${failedTime}&apos;)\&quot;&quot;)
+            
+            def errorMessage = err.getMessage().replaceAll(&apos;\n&apos;, &apos;--linebreak--&apos;)
+            
+            echo errorMessage
+            
+        def failedMetadataJSON = 
+        &quot;&quot;&quot;{
+            &quot;data&quot;: {
+                &quot;actionType&quot;: &quot;build&quot;,
+                &quot;appType&quot;: &quot;document editor&quot;,
+                &quot;didBuild&quot;: &quot;false&quot;,
+                &quot;buildMessage&quot;: &quot;${errorMessage}&quot;,
+                &quot;artifactType&quot;: &quot;docker&quot;,
+                &quot;artifactName&quot;: &quot;${env.JOB_NAME}&quot;,
+                &quot;artifactTag&quot;: &quot;${artifactTag}&quot;,
+                &quot;artifactVersion&quot;: &quot;${env.BUILD_ID}&quot;,
+                &quot;buildTimestamp&quot;: &quot;${env.BUILD_TIMESTAMP}&quot;,
+                &quot;timestamp&quot;: &quot;${env.BUILD_TIMESTAMP_NO_SPACES}&quot;,
+                &quot;buildURL&quot;: &quot;${env.BUILD_URL}&quot;,
+                &quot;jenkinsUrl&quot;: &quot;${env.JENKINS_URL}&quot;,
+                &quot;jenkinsJobName&quot;: &quot;${env.JOB_NAME}&quot;,
+                &quot;jenkinsJobTag&quot;: &quot;${env.BUILD_TAG}&quot;,
+                &quot;gitBranch&quot;: &quot;${gitBranch}&quot;,
+                &quot;commitHash&quot;: &quot;${commitHash}&quot;,
+                &quot;repoUrl&quot;: &quot;${repoUrl}&quot;,
+                &quot;authorEmail&quot;: &quot;${authorEmail}&quot;,
+                &quot;authorName&quot;: &quot;${authorName}&quot;,
+                &quot;commitEmail&quot;: &quot;${commitEmail}&quot;,
+                &quot;commitName&quot;: &quot;${commitName}&quot;,
+                &quot;commitDate&quot;: &quot;${commitDate}&quot;,
+                &quot;commitSubject&quot;: &quot;${commitSubject}&quot;
+            }
+        }&quot;&quot;&quot;
+
+            def responseOnBuildFail = httpRequest acceptType: &apos;APPLICATION_JSON&apos;, contentType: &apos;APPLICATION_JSON&apos;, httpMode: &apos;POST&apos;, requestBody: failedMetadataJSON, url: &quot;http://206.189.176.58:3000/develop/store&quot;
+
+       }
+}</script>
+    <loadedScripts class="map"/>
+    <durabilityHint>MAX_SURVIVABILITY</durabilityHint>
+    <timings class="map">
+      <entry>
+        <string>flowNode</string>
+        <long>283880790</long>
+      </entry>
+      <entry>
+        <string>classLoad</string>
+        <long>2491837234</long>
+      </entry>
+      <entry>
+        <string>run</string>
+        <long>1062999676</long>
+      </entry>
+      <entry>
+        <string>parse</string>
+        <long>1189566838</long>
+      </entry>
+      <entry>
+        <string>saveProgram</string>
+        <long>114312288</long>
+      </entry>
+    </timings>
+    <sandbox>true</sandbox>
+    <iota>40</iota>
+    <head>1:40</head>
+    <done>true</done>
+    <resumeBlocked>false</resumeBlocked>
+  </execution>
+  <completed>true</completed>
+  <checkouts class="hudson.util.PersistedList">
+    <org.jenkinsci.plugins.workflow.job.WorkflowRun_-SCMCheckout>
+      <scm class="hudson.plugins.git.GitSCM" plugin="git@4.2.2">
+        <configVersion>2</configVersion>
+        <userRemoteConfigs>
+          <hudson.plugins.git.UserRemoteConfig>
+            <url>https://github.com/JonathanDonJoe/etherpad-lite/</url>
+            <credentialsId>null</credentialsId>
+          </hudson.plugins.git.UserRemoteConfig>
+        </userRemoteConfigs>
+        <branches class="singleton-list">
+          <hudson.plugins.git.BranchSpec>
+            <name>*/master</name>
+          </hudson.plugins.git.BranchSpec>
+        </branches>
+        <doGenerateSubmoduleConfigurations>false</doGenerateSubmoduleConfigurations>
+        <submoduleCfg class="empty-list"/>
+        <extensions>
+          <hudson.plugins.git.extensions.impl.LocalBranch>
+            <localBranch>master</localBranch>
+          </hudson.plugins.git.extensions.impl.LocalBranch>
+        </extensions>
+      </scm>
+      <node></node>
+      <workspace>/var/lib/jenkins/jobs/demo-pipeline/workspace</workspace>
+      <pollingBaseline class="hudson.scm.SCMRevisionState$None" reference="../../../actions/org.jenkinsci.plugins.workflow.steps.scm.MultiSCMRevisionState/revisionStates/entry/hudson.scm.SCMRevisionState_-None"/>
+    </org.jenkinsci.plugins.workflow.job.WorkflowRun_-SCMCheckout>
+  </checkouts>
+</flow-build>
